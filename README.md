@@ -42,16 +42,24 @@ php artisan db:seed
 php artisan money:add {userId} {amount} {currencyISO}
 php artisan money:sub {userId} {amount} {currencyISO}
 php artisan money:transfer {userIdFrom} {userIdTo} {amount} {currencyISO}
+# check
+php artisan money:check {uuid}
+php artisan money:transfer_check {uuid}
 </pre>
 
 пример Add
 <pre>
+# команда создаст event и положит в очередь
 php artisan money:add 1 0.5 EUR
-# Queued 1fe35b86-2f43-47c2-9c29-f84a42e1fec9
-# обработать очередь:
+=> Queued 1fe35b86-2f43-47c2-9c29-f84a42e1fec9
+
+# обработать очередь
 php artisan queue:work --once
 
-# команда создаст event и положит в очередь
+# результат:
+php artisan money:check 1fe35b86-2f43-47c2-9c29-f84a42e1fec9
+=> Operation succeeded
+
 # результат в базе:
 select * from user_balance.user_balances;
 select * from user_balance.balance_logs;
@@ -73,8 +81,12 @@ balance_micros: 500000
 пример Transfer
 <pre>
 php artisan money:transfer 1 2 0.01 GBP
-# Queued e7a50982-4a5b-4025-a496-a2523fa12e7e
+=> Queued e7a50982-4a5b-4025-a496-a2523fa12e7e
 php artisan queue:work --once
+
+# результат:
+php artisan money:transfer_check e7a50982-4a5b-4025-a496-a2523fa12e7e
+=> Transfer succeeded
 
 # результат в базе:
 select * from user_balance.user_balances;
@@ -117,8 +129,6 @@ balance_micros: 10000
     created_at: 2025-09-17 00:25:32
     updated_at: 2025-09-17 00:25:32
 1 row in set (0.001 sec)
-
-
 </pre>
 
 
@@ -132,8 +142,8 @@ tests/Feature/Jobs/TransferBalanceTest.php
 php artisan test
 </pre>
 
-### Не сделал
-- Hold/Unhold - надо немного доработать user_balances. Плюс можно доработать остальные операции с учетом hold.
+### Что еще можно сделать
+- Не сделал Hold/Unhold - надо немного доработать user_balances. Плюс можно доработать остальные операции с учетом hold.
 - Transfer вызывает Sub и Add синхронно - это значит все должно выполняется на одном сервере. Альтернатива SAGA.
-- Можно сделать какой-то интерфейс сообщающий результат операции (succeeded/rejected)
+- Можно сделать какой-нибудь web-интерфейс, сообщающий результат операции (succeeded/rejected)
 
