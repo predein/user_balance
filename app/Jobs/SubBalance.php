@@ -21,6 +21,7 @@ class SubBalance implements ShouldQueue
         public int $userId,
         public int $amountMicros,
         public int $currencyId,
+        public ?string $connectionName = null,
     ) {
     }
 
@@ -33,7 +34,11 @@ class SubBalance implements ShouldQueue
 
     public function handle(DatabaseManager $db): void
     {
-        $db->connection()->transaction(function () {
+        $dbConnection = $this->connectionName
+            ? $db->connection($this->connectionName)
+            : $db->connection();
+
+        $dbConnection->transaction(function () {
             $balance = UserBalance::query()
                 ->where('user_id', $this->userId)
                 ->where('currency_id', $this->currencyId)

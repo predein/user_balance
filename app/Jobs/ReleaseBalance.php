@@ -1,0 +1,54 @@
+<?php
+
+namespace App\Jobs;
+
+use App\Enums\HoldStatus;
+use App\Models\BalanceHold;
+use App\Models\UserBalance;
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Database\DatabaseManager;
+use Illuminate\Foundation\Bus\Dispatchable;
+
+class ReleaseBalance implements ShouldQueue
+{
+    use Queueable, Dispatchable;
+    public function __construct(
+        public string $holdUuid,
+        public ?string $connectionName = null,
+    ) {}
+
+    public function handle(DatabaseManager $db): void
+    {
+        $dbConnection = $this->connectionName
+            ? $db->connection($this->connectionName)
+            : $db->connection();
+
+        $dbConnection->transaction(function () {
+            $hold = BalanceHold::where('hold_uuid',$this->holdUuid)->lockForUpdate()->first();
+            if (!$hold || $hold->status !== HoldStatus::RESERVED) {
+                return;
+            }
+
+            $balance = UserBalance::where('user_id',$hold->user_id)
+                ->where('currency_id',$hold->currency_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($balance->reserved_micros < $hold->amount_micros) {
+                throw new \RuntimeException('Reserved amount mismatch');
+            }
+
+            $balance->reserved_micros -= $hold->amount_micros;
+            $balance->save();
+
+            $hold->status = HoldStatus::RELEASED;
+            $hold->save();
+        });
+    }
+
+    public function backoff(): array
+    {
+        return [5, 15, 60];
+    }
+}

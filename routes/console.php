@@ -5,6 +5,9 @@ use App\Enums\Currency;
 use App\Jobs\AddBalance;
 use App\Jobs\SubBalance;
 use App\Jobs\TransferBalance;
+use App\Jobs\HoldBalance;
+use App\Jobs\ReleaseBalance;
+use App\Jobs\CaptureBalance;
 use Illuminate\Support\Str;
 
 Artisan::command('money:add {userId} {amount} {currencyISO}', function () {
@@ -38,6 +41,29 @@ Artisan::command('money:check {uuid}', function () {
         $this->info("Operation " . \App\Enums\BalanceLogStatus::PENDING->value);
     }
 })->purpose('Money operation check {uuid}');
+
+Artisan::command('money:hold {userId} {amount} {currencyISO}', function () {
+    $userId = (int) $this->argument('userId');
+    $amount = (float) $this->argument('amount');
+    $amountMicros = (int) round($amount * 1_000_000);
+    $currencyIso = (string) $this->argument('currencyISO');
+    $currency = Currency::getByISO($currencyIso);
+    $uuid = (string) Str::uuid();
+    HoldBalance::dispatch($uuid, $userId, $amountMicros, $currency->value);
+    $this->info("Queued " . $uuid);
+})->purpose('Money hold {userId} {amount} {currencyISO}');
+
+Artisan::command('money:release {uuid}', function () {
+    $uuid = (string) $this->argument('uuid');
+    ReleaseBalance::dispatch($uuid);
+    $this->info("Queued " . $uuid);
+})->purpose('Money release {uuid}');
+
+Artisan::command('money:capture {uuid}', function () {
+    $uuid = (string) $this->argument('uuid');
+    CaptureBalance::dispatch($uuid);
+    $this->info("Queued " . $uuid);
+})->purpose('Money capture {uuid}');
 
 Artisan::command('money:transfer {userIdFrom} {userIdTo} {amount} {currencyISO}', function () {
     $userIdFrom = (int) $this->argument('userIdFrom');

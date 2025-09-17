@@ -2,8 +2,8 @@
 
 namespace App\Jobs;
 
-use App\Enums\BalanceLogStatus;
-use App\Models\BalanceLog;
+use App\Enums\HoldStatus;
+use App\Models\BalanceHold;
 use App\Models\UserBalance;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -12,22 +12,22 @@ use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 
-class AddBalance implements ShouldQueue
+class HoldBalance implements ShouldQueue
 {
     use Queueable, Dispatchable;
-
     public function __construct(
-        public string $operationUuid,
+        public string $holdUuid,
         public int $userId,
         public int $amountMicros,
         public int $currencyId,
         public ?string $connectionName = null,
-    ) {}
+    ) {
+    }
 
     public function middleware(): array
     {
         return [
-            new WithoutOverlapping("user_balance:{$this->userId}:{$this->currencyId}"), // Оказалось в Laravel уже есть защита от RaceCondition. Добавлю как доп. уровень защиты
+            new WithoutOverlapping("user_balance:{$this->userId}:{$this->currencyId}"),
         ];
     }
 
@@ -43,36 +43,32 @@ class AddBalance implements ShouldQueue
                 ->where('currency_id', $this->currencyId)
                 ->lockForUpdate()
                 ->first();
-            if (!$balance) {
-                $balance = UserBalance::create(
-                    [
-                        'user_id' => $this->userId,
-                        'currency_id' => $this->currencyId,
-                        'balance_micros' => 0,
-                    ],
-                );
-            }
 
             try {
-                $log = BalanceLog::create(
+                $hold = BalanceHold::create(
                     [
-                        'operation_uuid' => $this->operationUuid,
+                        'hold_uuid' => $this->holdUuid,
                         'user_id' => $this->userId,
                         'currency_id' => $this->currencyId,
-                        'balance_micros' => $this->amountMicros,
-                        'status' => BalanceLogStatus::PENDING,
+                        'amount_micros' => $this->amountMicros,
+                        'status' => HoldStatus::RELEASED,
                     ],
                 );
             } catch (UniqueConstraintViolationException) {
-                // Идемпотентный выход
                 return;
             }
 
-            $balance->balance_micros += $this->amountMicros;
+            if (!$balance || $balance->balance_micros - $balance->reserved_micros < $this->amountMicros) {
+                $hold->status = HoldStatus::RELEASED;
+                $hold->save();
+                return;
+            }
+
+            $balance->reserved_micros += $this->amountMicros;
             $balance->save();
 
-            $log->status = BalanceLogStatus::SUCCEEDED;
-            $log->save();
+            $hold->status = HoldStatus::RESERVED;
+            $hold->save();
         });
     }
 

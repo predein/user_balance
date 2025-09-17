@@ -3,8 +3,10 @@
 namespace Tests\Feature\Jobs;
 
 use App\Enums\BalanceLogStatus;
+use App\Enums\HoldStatus;
 use App\Jobs\TransferBalance;
 use App\Models\BalanceLog;
+use App\Models\User;
 use App\Models\UserBalance;
 use Illuminate\Database\DatabaseManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -22,6 +24,9 @@ class TransferBalanceTest extends TestCase
 
     public function test_transfers_between_users_successfully(): void
     {
+        User::forceCreate(['id' => $this->fromUserId, 'name' => '', 'email' => $this->fromUserId, 'password' => '']);
+        User::forceCreate(['id' => $this->toUserId, 'name' => '', 'email' => $this->toUserId, 'password' => '']);
+
         // from = 3.0, to = 0.5
         UserBalance::create([
             'user_id' => $this->fromUserId,
@@ -73,6 +78,9 @@ class TransferBalanceTest extends TestCase
 
     public function test_is_idempotent_by_operation_uuid(): void
     {
+        User::forceCreate(['id' => $this->fromUserId, 'name' => '', 'email' => $this->fromUserId, 'password' => '']);
+        User::forceCreate(['id' => $this->toUserId, 'name' => '', 'email' => $this->toUserId, 'password' => '']);
+
         UserBalance::create([
             'user_id' => $this->fromUserId,
             'currency_id' => $this->currencyId,
@@ -113,6 +121,9 @@ class TransferBalanceTest extends TestCase
 
     public function test_fails_when_insufficient_funds_and_rolls_back(): void
     {
+        User::forceCreate(['id' => $this->fromUserId, 'name' => '', 'email' => $this->fromUserId, 'password' => '']);
+        User::forceCreate(['id' => $this->toUserId, 'name' => '', 'email' => $this->toUserId, 'password' => '']);
+
         // Недостаточно средств у отправителя
         UserBalance::create([
             'user_id' => $this->fromUserId,
@@ -142,12 +153,12 @@ class TransferBalanceTest extends TestCase
             'balance_micros' => 400_000,
         ]);
 
-        // Лог отказа у отправителя
-        $this->assertDatabaseHas('balance_logs', [
-            'user_id'        => $this->fromUserId,
-            'currency_id'    => $this->currencyId,
-            'balance_micros' => -$this->amountMicros,
-            'status'         => BalanceLogStatus::REJECTED->value,
+        // Hold вернули
+        $this->assertDatabaseHas('balance_holds', [
+            'user_id' => $this->fromUserId,
+            'currency_id' => $this->currencyId,
+            'amount_micros' => $this->amountMicros,
+            'status' => HoldStatus::RELEASED->value,
         ]);
 
         // Не должно быть успешного лога у получателя

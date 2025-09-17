@@ -7,10 +7,16 @@ use App\Enums\Currency;
 
 class UserBalance extends Model
 {
-    protected $fillable = ['user_id','currency_id','balance_micros'];
+    protected $fillable = [
+        'user_id',
+        'currency_id',
+        'balance_micros',
+        'reserved_micros',
+    ];
 
     protected $casts = [
         'currency_id' => Currency::class,
         'balance_micros' => 'integer',
+        'reserved_micros' => 'integer',
     ];
 }

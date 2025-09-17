@@ -3,9 +3,11 @@
 namespace App\Jobs;
 
 use App\Enums\BalanceLogStatus;
+use App\Enums\HoldStatus;
 use App\Enums\TransferStatus;
-use App\Models\BalanceLog;
+use App\Models\BalanceHold;
 use App\Models\Transfer;
+use App\Models\User;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -51,14 +53,19 @@ class TransferBalance implements ShouldQueue
             return;
         }
 
+        // предполагаем, что класс User автоматически определяет коннект по user_id
+        $fromConnectionName = User::find($this->fromUserId)->getConnection()->getName();
+        $toConnectionName = User::find($this->toUserId)->getConnection()->getName();
+
         $debitUuid = (string) Str::uuid();
-        SubBalance::dispatchSync(
+        HoldBalance::dispatchSync(
             $debitUuid,
             $this->fromUserId,
             $this->amountMicros,
             $this->currencyId,
+            $fromConnectionName,
         );
-        if ($this->isRejected($debitUuid)) {
+        if ($this->isRejected($debitUuid, $fromConnectionName)) {
             $transfer->markFailed('insufficient funds');
             return;
         }
@@ -73,36 +80,27 @@ class TransferBalance implements ShouldQueue
                 $this->toUserId,
                 $this->amountMicros,
                 $this->currencyId,
+                $toConnectionName,
             );
         } catch (\Throwable $e) {
-            $this->compensateDebit($debitUuid);
+            ReleaseBalance::dispatchSync($debitUuid, $fromConnectionName);
             $transfer->markFailed('credit failed');
             throw $e;
         }
+        CaptureBalance::dispatchSync($debitUuid, $fromConnectionName);
 
         // success
         $transfer->status = TransferStatus::SUCCEEDED;
         $transfer->save();
     }
 
-    private function isRejected(string $opUuid): bool
+    private function isRejected(string $uuid, string $сonnectionName): bool
     {
-        return BalanceLog::where('operation_uuid', $opUuid)
-            ->where('status', BalanceLogStatus::REJECTED)
-            ->exists();
-    }
-
-    private function compensateDebit(string $debitUuid): void
-    {
-        $log = BalanceLog::where('operation_uuid', $debitUuid)->first();
-        if (!$log) return; // неуспели зафиксировать — нечего компенсировать
-
-        $compensateUuid = (string) Str::uuid();
-        AddBalance::dispatchSync(
-            $compensateUuid,
-            $log->user_id,
-            abs($log->balance_micros),
-            $log->currency_id
+        return !(
+            BalanceHold::on($сonnectionName)
+            ->where('hold_uuid', $uuid)
+            ->where('status', HoldStatus::RESERVED)
+            ->exists()
         );
     }
 }
