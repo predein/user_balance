@@ -18,6 +18,10 @@
 app/Jobs/AddBalance.php
 app/Jobs/SubBalance.php
 app/Jobs/TransferBalance.php
+
+app/Jobs/HoldBalance.php
+app/Jobs/ReleaseBalance.php
+app/Jobs/CaptureBalance.php
 </pre>
 
 ## Как запустить
@@ -45,6 +49,11 @@ php artisan money:transfer {userIdFrom} {userIdTo} {amount} {currencyISO}
 # check
 php artisan money:check {uuid}
 php artisan money:transfer_check {uuid}
+
+# holding
+php artisan money:hold {userId} {amount} {currencyISO}
+php artisan money:release {uuid}
+php artisan money:capture {uuid}
 </pre>
 
 пример Add
@@ -73,8 +82,8 @@ operation_uuid: 1fe35b86-2f43-47c2-9c29-f84a42e1fec9
 balance_micros: 500000
         status: succeeded
         reason: NULL
-    created_at: 2025-09-17 00:20:43
-    updated_at: 2025-09-17 00:20:43
+    created_at: 2025-09-17 23:31:44
+    updated_at: 2025-09-17 23:31:44
 1 row in set (0.000 sec)
 </pre>
 
@@ -93,6 +102,18 @@ select * from user_balance.user_balances;
 select * from user_balance.balance_logs;
 select * from user_balance.transfers;
 
+mysql> select * from balance_holds \G
+*************************** 1. row ***************************
+           id: 1
+    hold_uuid: 7d0e203f-5a6b-4064-bc54-c7243040403f
+      user_id: 1
+amount_micros: 10000
+  currency_id: 826
+       status: captured
+   created_at: 2025-09-17 23:31:44
+   updated_at: 2025-09-17 23:31:44
+1 row in set (0.000 sec)
+
 mysql> select * from balance_logs \G
 *************************** 1. row ***************************
             id: 1
@@ -102,8 +123,8 @@ operation_uuid: 7d0e203f-5a6b-4064-bc54-c7243040403f
 balance_micros: -10000
         status: succeeded
         reason: NULL
-    created_at: 2025-09-17 00:25:32
-    updated_at: 2025-09-17 00:25:32
+    created_at: 2025-09-17 23:31:44
+    updated_at: 2025-09-17 23:31:44
 *************************** 2. row ***************************
             id: 2
 operation_uuid: f260214b-682a-4a59-afac-202157ee11af
@@ -112,8 +133,8 @@ operation_uuid: f260214b-682a-4a59-afac-202157ee11af
 balance_micros: 10000
         status: succeeded
         reason: NULL
-    created_at: 2025-09-17 00:25:32
-    updated_at: 2025-09-17 00:25:32
+    created_at: 2025-09-17 23:31:44
+    updated_at: 2025-09-17 23:31:44
 2 rows in set (0.001 sec)
 
 mysql> select * from transfers \G
@@ -126,8 +147,8 @@ balance_micros: 10000
    currency_id: 826
         status: succeeded
         reason: NULL
-    created_at: 2025-09-17 00:25:32
-    updated_at: 2025-09-17 00:25:32
+    created_at: 2025-09-17 23:31:44
+    updated_at: 2025-09-17 23:31:44
 1 row in set (0.001 sec)
 </pre>
 
@@ -143,7 +164,6 @@ php artisan test
 </pre>
 
 ### Что еще можно сделать
-- Не сделал Hold/Unhold - надо немного доработать user_balances. Плюс можно доработать остальные операции с учетом hold.
 - Transfer вызывает Sub и Add синхронно - это значит все должно выполняется на одном сервере. Альтернатива SAGA.
 - Можно сделать какой-нибудь web-интерфейс, сообщающий результат операции (succeeded/rejected)
 
